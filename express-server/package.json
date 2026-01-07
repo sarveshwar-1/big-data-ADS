@@ -1,0 +1,14 @@
+{
+  "name": "hdfs-upload-server",
+  "version": "1.0.0",
+  "description": "Express server to upload files to HDFS via WebHDFS",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "busboy": "^1.6.0",
+    "axios": "^1.6.0"
+  }
+}
