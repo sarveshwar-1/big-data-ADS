@@ -10,10 +10,11 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % sparkVersion % "provided",
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
-  "org.mongodb.spark" %% "mongo-spark-connector" % "10.2.1"
+  "org.mongodb.spark" %% "mongo-spark-connector" % "10.4.0"
 )
 
 assemblyMergeStrategy in assembly := {
-  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-  case x => MergeStrategy.first
+  case PathList("META-INF", "services", _*) => MergeStrategy.concat
+  case PathList("META-INF", _*)             => MergeStrategy.discard
+  case _                                    => MergeStrategy.first
 }

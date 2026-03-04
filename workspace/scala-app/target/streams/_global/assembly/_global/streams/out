@@ -1,59 +1,60 @@
 [debug] Separate classpath projects and all dependencies start:
 [debug] Separate classpath projects and all dependencies end. Took 2 ms
 [debug] Collect only external dependencies start:
-[debug] Collect only external dependencies end. Took 0 ms
+[debug] Collect only external dependencies end. Took 1 ms
 [debug] Collect excluded jar names start:
 [debug] Collect excluded jar names end. Took 0 ms
 [debug] Filter jars start:
-[debug] Filter jars end. Took 0 ms
+[debug] Filter jars end. Took 1 ms
 [debug] Collect and shade project classes start:
 [debug] Collect and shade project classes end. Took 1 ms
 [debug] Collect and shade dependency entries start:
-[debug] Collect and shade dependency entries end. Took 5 ms
+[debug] Collect and shade dependency entries end. Took 7 ms
 [debug] Collect renames start:
-[debug] Collect renames end. Took 13 ms
+[debug] Collect renames end. Took 28 ms
 [debug] Process renames start:
-[debug] Process renames end. Took 21 ms
+[debug] Process renames end. Took 17 ms
 [debug] Collect all merge strategies for cache check start:
-[debug] Collect all merge strategies for cache check end. Took 17 ms
-[debug] Building assembly jar due to missing output...
+[debug] Collect all merge strategies for cache check end. Took 31 ms
+[debug] Building assembly jar due to changed inputs...
 [debug] Merge all conflicting jar entries (including those renamed) start:
-[debug] Merge all conflicting jar entries (including those renamed) end. Took 16 ms
+[debug] Merge all conflicting jar entries (including those renamed) end. Took 17 ms
 [debug] Report merge results start:
-[info] 8 file(s) merged using strategy 'Discard' (Run the task at debug level to see the details)
+[info] 9 file(s) merged using strategy 'Discard' (Run the task at debug level to see the details)
 [debug] 
 [debug] Merge Strategy Used: Discard
 [debug] Resulting entries:
 [debug]   None
 [debug] Merge origins:
-[debug]   Jar name = mongodb-driver-core-4.8.2.jar, jar org = org.mongodb, entry target = META-INF/native-image/org.mongodb/mongodb-driver-core/native-image.properties
-[debug] 
-[debug] Merge Strategy Used: Discard
-[debug] Resulting entries:
-[debug]   None
-[debug] Merge origins:
-[debug]   Jar name = mongo-spark-connector_2.12-10.2.1.jar, jar org = org.mongodb.spark, entry target = META-INF/services/org.apache.spark.sql.sources.DataSourceRegister
-[debug] 
-[debug] Merge Strategy Used: Discard
-[debug] Resulting entries:
-[debug]   None
-[debug] Merge origins:
-[debug]   Jar name = bson-record-codec-4.8.2.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
-[debug]   Jar name = bson-4.8.2.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
-[debug]   Jar name = mongodb-driver-core-4.8.2.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
-[debug]   Jar name = mongodb-driver-sync-4.8.2.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
-[debug]   Jar name = mongo-spark-connector_2.12-10.2.1.jar, jar org = org.mongodb.spark, entry target = META-INF/MANIFEST.MF
+[debug]   Jar name = bson-record-codec-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
+[debug]   Jar name = bson-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
+[debug]   Jar name = mongodb-driver-core-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
+[debug]   Jar name = mongodb-driver-sync-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/MANIFEST.MF
+[debug]   Jar name = mongo-spark-connector_2.12-10.4.0.jar, jar org = org.mongodb.spark, entry target = META-INF/MANIFEST.MF
 [debug]   Jar name = scala-library-2.12.18.jar, jar org = org.scala-lang, entry target = META-INF/MANIFEST.MF
+[debug] 
+[debug] Merge Strategy Used: Discard
+[debug] Resulting entries:
+[debug]   None
+[debug] Merge origins:
+[debug]   Jar name = bson-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/native-image/org.mongodb/bson/native-image.properties
+[debug]   Jar name = mongodb-driver-core-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/native-image/org.mongodb/bson/native-image.properties
+[debug] 
+[debug] Merge Strategy Used: Discard
+[debug] Resulting entries:
+[debug]   None
+[debug] Merge origins:
+[debug]   Jar name = mongodb-driver-core-5.1.4.jar, jar org = org.mongodb, entry target = META-INF/native-image/resource-config.json
 [debug] Report merge results end. Took 4 ms
 [debug] Finding remaining conflicts that were not merged start:
-[debug] Finding remaining conflicts that were not merged end. Took 25 ms
+[debug] Finding remaining conflicts that were not merged end. Took 26 ms
 [debug] Sort/Parallelize merged entries start:
-[debug] Sort/Parallelize merged entries end. Took 9 ms
+[debug] Sort/Parallelize merged entries end. Took 8 ms
 [debug] Create jar start:
-[debug] Create jar end. Took 881 ms
+[debug] Create jar end. Took 842 ms
 [debug] Hash newly-built Jar start:
-[debug] Hash newly-built Jar end. Took 10 ms
-[info] Built: /app/target/scala-2.12/TrafficAnalysis-assembly-0.1.jar
-[info] Jar hash: df93efa79e9882b36d23bd5607fbfafb7497f702
+[debug] Hash newly-built Jar end. Took 11 ms
+[info] Built: /workspace/target/scala-2.12/TrafficAnalysis-assembly-0.1.jar
+[info] Jar hash: 67d75dee1a0b6a407f5c0d45ebf4aa1ab65577c6
 [debug] Close library jar references start:
 [debug] Close library jar references end. Took 1 ms
