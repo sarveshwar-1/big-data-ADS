@@ -7,7 +7,8 @@ services:
     container_name: namenode
     ports:
       - "9870:9870" # NameNode Web UI
-      - "9000:9000"
+      - "9010:9000"
+      
     environment:
       - CLUSTER_NAME=test
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
@@ -22,7 +23,7 @@ services:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode
     ports:
-      - "9864:9864" # DataNode Web UI
+      - "9874:9864" # DataNode Web UI
     environment:
       - CLUSTER_NAME=test
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
@@ -77,6 +78,8 @@ services:
       - SPARK_MASTER_HOST=spark
     volumes:
       - ./workspace/spark:/opt/spark/jobs
+    stdin_open: true
+    tty: true
     networks:
       - hadoop
     depends_on:
@@ -96,17 +99,69 @@ services:
     environment:
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_WEBUI_PORT=8081
+    ports:
+      - "8081:8081"  # Worker 1 Web UI
+      - "4040:4040"  # Driver UI (when job runs here)
+    volumes:
+      - ./workspace/spark:/opt/spark/jobs
     networks:
       - hadoop
     depends_on:
       - spark
+
+  # ======================= SPARK WORKER 2 =======================
+  spark-worker-2:
+    image: apache/spark:3.5.1
+    container_name: spark-worker-2
+    command:
+      [
+        "/opt/spark/bin/spark-class",
+        "org.apache.spark.deploy.worker.Worker",
+        "spark://spark:7077",
+      ]
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_WEBUI_PORT=8081
+    ports:
+      - "8082:8081"  # Worker 2 Web UI
+      - "4041:4040"  # Driver UI (when job runs here)
+    volumes:
+      - ./workspace/spark:/opt/spark/jobs
+    networks:
+      - hadoop
+    depends_on:
+      - spark
+
+  # ======================= SPARK HISTORY SERVER =======================
+  spark-history-server:
+    image: apache/spark:3.5.1
+    container_name: spark-history-server
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo 'Waiting for HDFS namenode to be ready...'
+        sleep 30
+        /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    ports:
+      - "18080:18080"
+    environment:
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=hdfs://namenode:8020/spark-logs -Dspark.history.ui.port=18080
+      - SPARK_NO_DAEMONIZE=true
+    networks:
+      - hadoop
+    depends_on:
+      - namenode
+      - datanode
+    restart: on-failure
 
   # ======================= MONGODB =======================
   mongodb:
     image: mongo:6
     container_name: mongodb
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
       - mongo_data:/data/db
     networks:
@@ -117,11 +172,14 @@ services:
     build: ./express-server
     container_name: express-server
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - WEBHDFS_HOST=namenode
       - WEBHDFS_PORT=9870
       - WEBHDFS_USER=root
+      - KAGGLE_USERNAME=${KAGGLE_USERNAME}
+      - KAGGLE_KEY=${KAGGLE_KEY}
+      - WEBHDFS_DATANODE_PORT=
     networks:
       - hadoop
     depends_on:
