@@ -16,12 +16,14 @@ object PredictTraffic {
     val model = PipelineModel.load(modelPath)
 
     println("Generating 'live' data for inference...")
+    // Model now expects prev_count, hour_sin, hour_cos
+    val pi = math.Pi
     val liveData = Seq(
-      Tuple1(2000),
-      Tuple1(5000),
-      Tuple1(100),
-      Tuple1(8000)
-    ).toDF("prev_count")
+      (2000, math.sin(2*pi*10/24), math.cos(2*pi*10/24)),
+      (5000, math.sin(2*pi*14/24), math.cos(2*pi*14/24)),
+      (100,  math.sin(2*pi*3/24),  math.cos(2*pi*3/24)),
+      (8000, math.sin(2*pi*18/24), math.cos(2*pi*18/24))
+    ).toDF("prev_count", "hour_sin", "hour_cos")
 
     println("Predicting future traffic...")
     val predictions = model.transform(liveData)

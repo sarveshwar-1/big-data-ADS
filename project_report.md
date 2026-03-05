@@ -44,12 +44,12 @@ This project implements an **end-to-end distributed big data pipeline** for anal
 
 | Model | RMSE | MAE | R² | MAPE | Quality |
 |-------|------|-----|-----|------|---------|
-| **Linear Regression** | 1,224.73 | 826.63 | 0.9165 | — | EXCELLENT |
-| **LSTM** | 1,383.08 | 906.79 | 0.9264 | — | EXCELLENT |
-| **SARIMA** | 2,196.93 | 1,565.11 | 0.9986 | 1.67% | EXCELLENT |
-| **Hybrid (SARIMA+LSTM)** | 2,190.73 | 1,573.40 | 0.9986 | 1.62% | EXCELLENT |
+| **Linear Regression** | 17,805.29 | 14,444.98 | 0.9068 | 21.67% | EXCELLENT |
+| **LSTM** | 29,227.96 | 22,898.67 | 0.7587 | 21.64% | GOOD |
+| **SARIMA** | 18,641.86 | 15,898.07 | 0.8978 | 42.27% | EXCELLENT |
+| **Hybrid (SARIMA+LSTM)** | 18,278.98 | 15,632.39 | 0.9017 | 41.12% | EXCELLENT |
 
-All four models achieved EXCELLENT quality (R² > 0.80). The SARIMA and Hybrid models operate on hourly-resampled data (different scale), while LR and LSTM operate on 5-minute granularity, making direct RMSE comparison across groups inappropriate — the R² metric provides the most meaningful cross-model comparison.
+All four models operate on the **same hourly dataset** (112 observations) with an identical **chronological 80/20 train/test split** (89 train / 23 test). This unified evaluation ensures fair, comparable metrics across all models — no resampling differences or random splits. Linear Regression is the overall winner (best on 3 of 4 metrics).
 
 ---
 
@@ -106,8 +106,8 @@ HDFS: /logs/parsed/ (Parquet, 270.9 MB, 27 partitions)
     │
     ├──▶ [Spark Scala: AggregateLogs] ──▶ MongoDB (top_ips, status_codes)
     │
-    ▼  [Spark Scala: FeatureEngineering — 5-min windows + lag]
-HDFS: /logs/features/traffic_ml_ready (Parquet, 38.2 KB, 1,350 rows)
+    ▼  [Spark Scala: FeatureEngineering — 1-hour windows + lag]
+HDFS: /logs/features/traffic_ml_ready_hourly (Parquet, ~5 KB, 112 rows)
     │
     ├──▶ [Scala: TrainModel — Linear Regression]  ──▶ HDFS /models/metrics/lr_metrics
     ├──▶ [Python: train_lstm — LSTM Neural Network] ──▶ HDFS /models/metrics/lstm_metrics
@@ -317,26 +317,25 @@ The ETL pipeline is implemented in **Scala** (production) with Python equivalent
 
 **Pipeline:**
 1. **Timestamp Parsing:** Convert `event_time` string → Spark `timestamp` type (using legacy parser policy for `dd/MMM/yyyy:HH:mm:ss` format)
-2. **5-Minute Window Aggregation:**
-   - `window(col("event_ts"), "5 minutes")` — Spark's built-in tumbling window function
+2. **1-Hour Window Aggregation:**
+   - `window(col("event_ts"), "1 hour")` — Spark's built-in tumbling window function
    - Aggregate per window: `request_count = COUNT(*)`, `total_bytes = SUM(bytes)`
 3. **Lag Feature Creation:**
-   - `prev_count = LAG(request_count, 1) OVER (ORDER BY window_start)`
+   - `prev_count = LAG(request_count, 1) OVER (ORDER BY hour_timestamp)`
    - Provides autoregressive input for ML models
 4. **Null Handling:** `na.drop()` removes the first window (no lag available)
 
 **Output Schema:**
 | Column | Type | Description |
 |--------|------|-------------|
-| `window_start` | timestamp | Start of 5-minute window |
-| `window_end` | timestamp | End of 5-minute window |
+| `hour_timestamp` | timestamp | Start of 1-hour window |
 | `request_count` | long | Number of HTTP requests (TARGET) |
 | `total_bytes` | long | Total bytes transferred |
 | `prev_count` | long | Previous window's request count |
 
 **Dataset Statistics:**
-- **1,350 observations** (5-minute intervals over ~4.7 days)
-- **Date range:** 2019-01-22 00:00 → 2019-01-26 16:00
+- **112 observations** (1-hour intervals over ~4.7 days)
+- **Date range:** 2019-01-22 01:00 → 2019-01-26 16:00
 
 ---
 
@@ -346,13 +345,13 @@ The ETL pipeline is implemented in **Scala** (production) with Python equivalent
 
 | Feature | Source | Type | Description |
 |---------|--------|------|-------------|
-| `request_count` | Aggregation | Target | HTTP requests per 5-min window |
+| `request_count` | Aggregation | Target | HTTP requests per 1-hour window |
 | `total_bytes` | Aggregation | Numeric | Total response bytes per window |
 | `prev_count` | Window LAG | Numeric | Previous window's request count |
 
-### 6.2 Extended Features (Python: validate_lstm.py)
+### 6.2 Extended Features (added in model training)
 
-The advanced LSTM model engineers additional temporal features:
+All models that use temporal encoding derive cyclical hour features:
 
 | Feature | Derivation | Purpose |
 |---------|-----------|---------|
@@ -361,19 +360,20 @@ The advanced LSTM model engineers additional temporal features:
 
 **Why cyclical encoding?** Standard integer hours (0-23) create an artificial discontinuity at midnight. Sine/cosine encoding ensures hour 23 and hour 0 are numerically close, matching their true temporal proximity.
 
-### 6.3 SARIMA Feature Processing (train_sarima.py & train_hybrid.py)
+These features are computed at training time by the Linear Regression model (Spark MLlib) and the LSTM models (PyTorch). All models consume the same shared hourly dataset from HDFS.
 
-For the statistical models, raw 5-minute data is **resampled to hourly**:
+### 6.3 Unified Data Pipeline
 
-| Transformation | Method | Rationale |
-|---------------|--------|-----------|
-| Resample 5-min → 1-hour | `resample("1h").agg()` | Reduces noise; SARIMA performs better on smoother data |
-| `request_count` | Sum | Total requests per hour |
-| `total_bytes` | Sum | Total bytes per hour |
-| `prev_count` | Mean | Average lag feature per hour |
-| Exogenous normalization | `(x - mean) / std` | Prevents numerical instability in SARIMAX |
+All four models read from the **same** HDFS dataset (`/logs/features/traffic_ml_ready_hourly`) and use the **same chronological 80/20 train/test split** (no random splitting). This eliminates data leakage and ensures fair comparison:
 
-**After resampling:** 1,350 rows → **113 hourly observations**
+| Property | Value |
+|----------|-------|
+| Source | `/logs/features/traffic_ml_ready_hourly` |
+| Total observations | 112 (hourly) |
+| Train set | 89 observations |
+| Test set | 23 observations |
+| Split method | Chronological (first 80% train, last 20% test) |
+| Split boundary | Deterministic, no seed-dependent randomness |
 
 ---
 
@@ -385,16 +385,16 @@ For the statistical models, raw 5-minute data is **resampled to hourly**:
 
 **Architecture:**
 ```
-VectorAssembler(prev_count → features)
+VectorAssembler(prev_count, hour_sin, hour_cos → features)
     → LinearRegression(features → request_count)
 ```
 
 **Training Details:**
 | Parameter | Value |
 |-----------|-------|
-| Features | `prev_count` (single feature) |
+| Features | `prev_count`, `hour_sin`, `hour_cos` (3 features) |
 | Target | `request_count` |
-| Train/Test Split | 80% / 20% (random, seed=42) |
+| Train/Test Split | 80% / 20% (chronological, ordered by `hour_timestamp`) |
 | Framework | Spark MLlib |
 | Deploy Mode | Cluster (Spark Standalone) |
 
@@ -403,13 +403,14 @@ VectorAssembler(prev_count → features)
 **Results:**
 | Metric | Value |
 |--------|-------|
-| RMSE | 1,224.73 |
-| MAE | 826.63 |
-| R² | 0.9165 |
+| RMSE | 17,805.29 |
+| MAE | 14,444.98 |
+| R² | 0.9068 |
+| MAPE | 21.67% |
 
-**Strengths:** Fastest training, interpretable, runs natively on Spark. Strong performance given single-feature simplicity.
+**Strengths:** Fastest training, interpretable, runs natively on Spark. Strong R² (>0.90) with just 3 features demonstrates the power of the autoregressive `prev_count` feature combined with cyclical time encoding.
 
-**Limitations:** Linear assumption; cannot capture non-linear traffic patterns or seasonality.
+**Limitations:** Linear assumption; cannot capture non-linear traffic patterns or complex seasonality.
 
 ---
 
@@ -423,10 +424,11 @@ Two LSTM implementations exist:
 |-----------|-------|
 | Input | `request_count` only (univariate) |
 | Architecture | LSTM(1, 50) → Linear(50, 1) |
-| Sequence Length | 3 (15-minute lookback) |
+| Sequence Length | 6 (6-hour lookback) |
 | Epochs | 10 |
 | Optimizer | Adam (lr=0.001) |
 | Normalization | MinMaxScaler(0, 1) |
+| Train/Test Split | Chronological 80/20 |
 | Output | Console only (no HDFS save) |
 
 #### 7.2.2 Enhanced LSTM (`10_validate_lstm.py`)
@@ -435,27 +437,28 @@ Two LSTM implementations exist:
 |-----------|-------|
 | Input Features | 5: `request_count`, `total_bytes`, `prev_count`, `hour_sin`, `hour_cos` |
 | Architecture | LSTM(5, 128, layers=2, dropout=0.2) → ReLU(128→64) → Linear(64→1) |
-| Sequence Length | 12 (60-minute lookback at 5-min intervals) |
+| Sequence Length | 6 (6-hour lookback at hourly intervals) |
 | Epochs | 50 |
-| Batch Size | 32 (mini-batch SGD) |
+| Batch Size | 32 (sequential mini-batches, no shuffling) |
 | Optimizer | Adam (lr=0.001) |
 | LR Scheduler | ReduceLROnPlateau(patience=5, factor=0.5) |
 | Gradient Clipping | max_norm=1.0 |
 | Early Stopping | patience=10 |
 | Normalization | Separate MinMaxScaler for features and target |
+| Train/Test Split | Chronological 80/20 (84 train / 22 test after sequence creation) |
 | Output | HDFS: `/models/metrics/lstm_metrics` |
 
 **Results (Enhanced LSTM):**
 | Metric | Value |
 |--------|-------|
-| MSE | 1,912,904.75 |
-| RMSE | 1,383.08 |
-| MAE | 906.79 |
-| R² | 0.9264 |
+| RMSE | 29,227.96 |
+| MAE | 22,898.67 |
+| R² | 0.7587 |
+| MAPE | 21.64% |
 
-**Strengths:** Captures non-linear temporal patterns; multi-feature input provides richer context; gradient clipping prevents exploding gradients.
+**Strengths:** Captures non-linear temporal patterns; multi-feature input provides richer context; gradient clipping prevents exploding gradients; best MAPE among all models (21.64%).
 
-**Limitations:** Requires more data for optimal performance; black-box nature reduces interpretability; sensitive to hyperparameters.
+**Limitations:** Limited by small dataset size (112 hourly observations); requires more data for optimal performance; black-box nature reduces interpretability; sensitive to hyperparameters.
 
 ---
 
@@ -473,9 +476,9 @@ Where:
 - $m = 24$ (daily seasonality in hourly data)
 
 **Data Preparation:**
-- Resampled from 5-min to hourly (113 observations)
+- Reads directly from the shared hourly dataset (112 observations) — no resampling needed
 - Exogenous variables: `total_bytes`, `prev_count` (z-score normalized)
-- Train: 90 observations, Test: 23 observations
+- Train: 89 observations, Test: 23 observations (chronological split)
 
 **Grid Search:**
 | Parameter | Range | Combinations |
@@ -491,20 +494,19 @@ Where:
 **Selection Criterion:** Minimum AIC (Akaike Information Criterion)
 
 **Best Model Found:**
-$$SARIMA(0,0,2) \times (1,1,1)_{24} \quad AIC = 700.96$$
+$$SARIMA(2,1,2) \times (0,1,1)_{24} \quad AIC = 780.37$$
 
 **Results:**
 | Metric | Value |
 |--------|-------|
-| MSE | 4,826,518.86 |
-| RMSE | 2,196.93 |
-| MAE | 1,565.11 |
-| R² | 0.9986 |
-| MAPE | 1.67% |
+| RMSE | 18,641.86 |
+| MAE | 15,898.07 |
+| R² | 0.8978 |
+| MAPE | 42.27% |
 
-**Strengths:** Extremely high R² (0.9986); explicit seasonal modeling; built-in uncertainty quantification; interpretable parameters; uses exogenous variables for richer context.
+**Strengths:** Explicit seasonal modeling with period $m=24$; built-in uncertainty quantification; interpretable parameters; uses exogenous variables for richer context.
 
-**Limitations:** Linear in nature; requires stationarity assumptions; hourly resampling loses fine-grained patterns; computationally expensive grid search.
+**Limitations:** Linear in nature; requires stationarity assumptions; high MAPE suggests difficulty with low-traffic hours; computationally expensive grid search.
 
 ---
 
@@ -545,7 +547,7 @@ $$SARIMA(0,0,2) \times (1,1,1)_{24} \quad AIC = 700.96$$
 ```
 
 **Stage A: SARIMA Baseline**
-- Identical preprocessing to standalone SARIMA (hourly resample, normalized exog)
+- Reads the shared hourly dataset directly (no resampling), with normalized exogenous variables
 - Full grid search (144 combinations, AIC-minimized)
 - Generates baseline test forecast and computes SARIMA-only RMSE
 
@@ -553,7 +555,7 @@ $$SARIMA(0,0,2) \times (1,1,1)_{24} \quad AIC = 700.96$$
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Residual Source | `sarima_fitted.resid` | One-step-ahead residuals (properly computed) |
+| Residual Source | Training-set residuals only | Prevents data leakage — LSTM never sees test-set residuals |
 | Burn-in | 24 samples | First seasonal period unreliable due to differencing |
 | Scaling | StandardScaler + clip(±3σ) | Normalizes residuals; suppresses outliers |
 | Architecture | LSTM(1, 32) → Linear(32, 1) | Lightweight — prevents overfitting on 66 samples |
@@ -575,12 +577,11 @@ The decay factor ($e^{-0.1t}$) reduces the LSTM contribution at longer forecast 
 **Results:**
 | Metric | Value |
 |--------|-------|
-| MSE | 4,799,282.78 |
-| RMSE | 2,190.73 |
-| MAE | 1,573.40 |
-| R² | 0.9986 |
-| MAPE | 1.62% |
-| **Improvement over SARIMA-only** | **+0.28% RMSE reduction** |
+| RMSE | 18,278.98 |
+| MAE | 15,632.39 |
+| R² | 0.9017 |
+| MAPE | 41.12% |
+| **Improvement over SARIMA-only** | **+1.95% RMSE reduction** |
 
 **Sample Predictions:**
 | Actual | SARIMA | LSTM Correction | Hybrid | Error |

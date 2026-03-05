@@ -16,19 +16,17 @@ spark = (SparkSession.builder
 # ==========================================
 # 1. DATA LOADING & PREPROCESSING
 # ==========================================
-print("\n[1/5] Loading Feature Data from HDFS...")
-input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready"
+print("\n[1/5] Loading Hourly Feature Data from HDFS...")
+input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready_hourly"
 df = spark.read.parquet(input_path)
 
 # Use multiple features: request_count, total_bytes, prev_count + time features
-pdf = df.select("window_start", "request_count", "total_bytes", "prev_count") \
-        .orderBy("window_start").toPandas()
+pdf = df.select("hour_timestamp", "request_count", "total_bytes", "prev_count") \
+        .orderBy("hour_timestamp").toPandas()
 
 # Engineer time-based features
-pdf["window_start"] = pd.to_datetime(pdf["window_start"])
-pdf["hour"] = pdf["window_start"].dt.hour
-pdf["minute"] = pdf["window_start"].dt.minute
-pdf["day_of_week"] = pdf["window_start"].dt.dayofweek
+pdf["hour_timestamp"] = pd.to_datetime(pdf["hour_timestamp"])
+pdf["hour"] = pdf["hour_timestamp"].dt.hour
 # Cyclical encoding for hour
 pdf["hour_sin"] = np.sin(2 * np.pi * pdf["hour"] / 24)
 pdf["hour_cos"] = np.cos(2 * np.pi * pdf["hour"] / 24)
@@ -47,8 +45,8 @@ target_scaler = MinMaxScaler(feature_range=(0, 1))
 data_features_norm = feature_scaler.fit_transform(data_features)
 data_target_norm = target_scaler.fit_transform(data_target)
 
-# Create Sequences with longer lookback
-SEQ_LENGTH = 12  # 12 × 5min = 1 hour of history
+# Create Sequences — 6 hours lookback for hourly data
+SEQ_LENGTH = 6
 N_FEATURES = len(feature_cols)
 
 def create_sequences(features, target, seq_length):
@@ -66,13 +64,16 @@ X, y = create_sequences(data_features_norm, data_target_norm, SEQ_LENGTH)
 X_tensor = torch.from_numpy(X)
 y_tensor = torch.from_numpy(y)
 
-# Split Training/Test (80% Train, 20% Test)
+# Chronological Split Training/Test (80% Train, 20% Test)
+# Sequences do not cross train/test boundary because create_sequences
+# is applied to the full dataset before splitting, and the split is by index
 train_size = int(len(X) * 0.8)
 X_train, X_test = X_tensor[:train_size], X_tensor[train_size:]
 y_train, y_test = y_tensor[:train_size], y_tensor[train_size:]
 
-print(f"Data Prepared. Training Samples: {len(X_train)}, Test Samples: {len(X_test)}")
-print(f"Features: {feature_cols}, Sequence Length: {SEQ_LENGTH}")
+print(f"Data: {len(pdf)} hourly obs → {len(X)} sequences")
+print(f"Chronological split: Train={len(X_train)}, Test={len(X_test)}")
+print(f"Features: {feature_cols}, Sequence Length: {SEQ_LENGTH} hours")
 
 # ==========================================
 # 2. DEFINE IMPROVED LSTM MODEL
@@ -87,9 +88,7 @@ class TrafficLSTM(nn.Module):
         self.fc2 = nn.Linear(64, 1)
 
     def forward(self, x):
-        # x shape: (batch, seq_len, features)
         lstm_out, _ = self.lstm(x)
-        # Take last time step
         last_out = lstm_out[:, -1, :]
         out = self.relu(self.fc1(last_out))
         return self.fc2(out)
@@ -114,13 +113,11 @@ for epoch in range(epochs):
     epoch_loss = 0.0
     n_batches = 0
 
-    # Mini-batch training
-    indices = torch.randperm(len(X_train))
+    # Sequential mini-batch training (no shuffling to preserve time order)
     for start in range(0, len(X_train), batch_size):
         end = min(start + batch_size, len(X_train))
-        batch_idx = indices[start:end]
-        X_batch = X_train[batch_idx]
-        y_batch = y_train[batch_idx]
+        X_batch = X_train[start:end]
+        y_batch = y_train[start:end]
 
         optimizer.zero_grad()
         y_pred = model(X_batch)
@@ -134,7 +131,7 @@ for epoch in range(epochs):
 
     avg_loss = epoch_loss / n_batches
 
-    # Validation loss
+    # Validation loss on held-out test set
     model.eval()
     with torch.no_grad():
         val_pred = model(X_test)
@@ -183,23 +180,36 @@ rmse = math.sqrt(mse)
 mae = mean_absolute_error(actual_traffic, predicted_traffic)
 r2 = r2_score(actual_traffic, predicted_traffic)
 
+# MAPE (guard against zeros)
+nonzero = actual_traffic.flatten() != 0
+if nonzero.any():
+    mape = float(np.mean(np.abs(
+        (actual_traffic.flatten()[nonzero] - predicted_traffic.flatten()[nonzero])
+        / actual_traffic.flatten()[nonzero]
+    )) * 100)
+else:
+    mape = float("nan")
+
 print("\n" + "="*50)
 print("       LSTM MODEL FINAL REPORT CARD       ")
 print("="*50)
-print(f"Dataset Size:    {len(X)} windows")
-print(f"Test Set Size:   {len(actual_traffic)} windows")
-print(f"Seq Length:      {SEQ_LENGTH} ({SEQ_LENGTH * 5} min lookback)")
+print(f"Dataset Size:    {len(X)} sequences")
+print(f"Test Set Size:   {len(actual_traffic)} sequences")
+print(f"Data Frequency:  Hourly")
+print(f"Seq Length:      {SEQ_LENGTH} hours lookback")
 print(f"Features:        {N_FEATURES} ({', '.join(feature_cols)})")
+print(f"Split:           Chronological (80/20)")
 print("-" * 50)
 print(f"MSE (Mean Squared Error):   {mse:.2f}")
 print(f"RMSE (Root Mean Sq Error):  {rmse:.2f}")
 print(f"MAE (Mean Absolute Error):  {mae:.2f}")
 print(f"R² (Accuracy Score):        {r2:.4f}")
+print(f"MAPE (% Error):             {mape:.2f}%")
 print("-" * 50)
 
 # Interpretation
 print("\n[5/5] Interpretation:")
-print(f" -> On average, the prediction is off by {mae:.0f} requests.")
+print(f" -> On average, the prediction is off by {mae:.0f} requests/hour.")
 if r2 > 0.80:
     print(" -> Model Quality: EXCELLENT (High Predictive Power)")
 elif r2 > 0.50:
@@ -212,8 +222,8 @@ print("\n[5/5] Saving LSTM metrics to HDFS...")
 metrics_path = "hdfs://namenode:8020/models/metrics/lstm_metrics"
 
 metrics_df = spark.createDataFrame(
-    [(float(mse), float(rmse), float(mae), float(r2))],
-    ["mse", "rmse", "mae", "r2"]
+    [(float(mse), float(rmse), float(mae), float(r2), float(mape))],
+    ["mse", "rmse", "mae", "r2", "mape"]
 )
 metrics_df.coalesce(1).write.mode("overwrite").json(metrics_path)
 print(f"   Metrics saved to {metrics_path}")

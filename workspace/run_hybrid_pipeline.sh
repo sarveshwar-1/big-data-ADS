@@ -211,8 +211,8 @@ submit_scala "1-AggregateLogs" "com.example.bigdata.AggregateLogs"
 log "$DIVIDER"
 log "STAGE 1 – Scala: Feature Engineering"
 log "$DIVIDER"
-if ! $FORCE && hdfs_exists /logs/features/traffic_ml_ready; then
-    log "[1-FeatureEngineering] SKIP – /logs/features/traffic_ml_ready already exists (use --force to re-run)"
+if ! $FORCE && hdfs_exists /logs/features/traffic_ml_ready_hourly; then
+    log "[1-FeatureEngineering] SKIP – /logs/features/traffic_ml_ready_hourly already exists (use --force to re-run)"
 else
     submit_scala "1-FeatureEngineering" "com.example.bigdata.FeatureEngineering"
 fi

@@ -1,24 +1,24 @@
 [debug] Separate classpath projects and all dependencies start:
 [debug] Separate classpath projects and all dependencies end. Took 2 ms
 [debug] Collect only external dependencies start:
-[debug] Collect only external dependencies end. Took 1 ms
+[debug] Collect only external dependencies end. Took 0 ms
 [debug] Collect excluded jar names start:
 [debug] Collect excluded jar names end. Took 0 ms
 [debug] Filter jars start:
-[debug] Filter jars end. Took 1 ms
+[debug] Filter jars end. Took 0 ms
 [debug] Collect and shade project classes start:
-[debug] Collect and shade project classes end. Took 1 ms
+[debug] Collect and shade project classes end. Took 2 ms
 [debug] Collect and shade dependency entries start:
-[debug] Collect and shade dependency entries end. Took 7 ms
+[debug] Collect and shade dependency entries end. Took 8 ms
 [debug] Collect renames start:
 [debug] Collect renames end. Took 28 ms
 [debug] Process renames start:
-[debug] Process renames end. Took 17 ms
+[debug] Process renames end. Took 24 ms
 [debug] Collect all merge strategies for cache check start:
-[debug] Collect all merge strategies for cache check end. Took 31 ms
-[debug] Building assembly jar due to changed inputs...
+[debug] Collect all merge strategies for cache check end. Took 35 ms
+[debug] Building assembly jar due to missing output...
 [debug] Merge all conflicting jar entries (including those renamed) start:
-[debug] Merge all conflicting jar entries (including those renamed) end. Took 17 ms
+[debug] Merge all conflicting jar entries (including those renamed) end. Took 21 ms
 [debug] Report merge results start:
 [info] 9 file(s) merged using strategy 'Discard' (Run the task at debug level to see the details)
 [debug] 
@@ -49,12 +49,12 @@
 [debug] Finding remaining conflicts that were not merged start:
 [debug] Finding remaining conflicts that were not merged end. Took 26 ms
 [debug] Sort/Parallelize merged entries start:
-[debug] Sort/Parallelize merged entries end. Took 8 ms
+[debug] Sort/Parallelize merged entries end. Took 10 ms
 [debug] Create jar start:
-[debug] Create jar end. Took 842 ms
+[debug] Create jar end. Took 975 ms
 [debug] Hash newly-built Jar start:
-[debug] Hash newly-built Jar end. Took 11 ms
-[info] Built: /workspace/target/scala-2.12/TrafficAnalysis-assembly-0.1.jar
-[info] Jar hash: 67d75dee1a0b6a407f5c0d45ebf4aa1ab65577c6
+[debug] Hash newly-built Jar end. Took 12 ms
+[info] Built: /app/target/scala-2.12/TrafficAnalysis-assembly-0.1.jar
+[info] Jar hash: 58e1ff0f113a3525d94459bf14afd8527238133e
 [debug] Close library jar references start:
 [debug] Close library jar references end. Took 1 ms

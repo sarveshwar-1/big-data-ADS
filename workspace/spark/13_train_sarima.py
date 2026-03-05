@@ -1,14 +1,14 @@
 """
 SARIMA Model Training & Validation Pipeline
 Statistical time series forecasting using Seasonal ARIMA.
-Loads feature data from HDFS via Spark, trains SARIMA using statsmodels,
-evaluates on a hold-out test set, and saves metrics back to HDFS.
+Loads hourly feature data from HDFS via Spark, trains SARIMA using statsmodels,
+evaluates on a chronological hold-out test set, and saves metrics back to HDFS.
 
-Key improvements:
-- Resample to hourly to reduce noise and match SARIMA's strengths
-- Use exogenous variables (total_bytes, prev_count) via SARIMAX
-- Broader grid search with smarter seasonal period detection
-- Walk-forward validation for more realistic evaluation
+Key design:
+- Data is already hourly from the feature engineering stage
+- Uses exogenous variables (total_bytes, prev_count) via SARIMAX
+- Broader grid search with daily seasonal period (m=24)
+- Chronological train/test split (80/20) — no future leakage
 """
 
 import numpy as np
@@ -30,36 +30,28 @@ spark = (SparkSession.builder
     .getOrCreate()
 )
 
-print("\n[1/6] Loading Feature Data from HDFS...")
-input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready"
+print("\n[1/6] Loading Hourly Feature Data from HDFS...")
+input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready_hourly"
 df = spark.read.parquet(input_path)
 
 # Convert to Pandas
-pdf = (df.select("window_start", "request_count", "total_bytes", "prev_count")
-       .orderBy("window_start")
+pdf = (df.select("hour_timestamp", "request_count", "total_bytes", "prev_count")
+       .orderBy("hour_timestamp")
        .toPandas())
 
-pdf["window_start"] = pd.to_datetime(pdf["window_start"])
-pdf = pdf.set_index("window_start").sort_index()
+pdf["hour_timestamp"] = pd.to_datetime(pdf["hour_timestamp"])
+pdf = pdf.set_index("hour_timestamp").sort_index()
 
-# Resample to hourly to reduce noise — SARIMA works much better
-# on smoother, lower-frequency data
-pdf_hourly = pdf.resample("1H").agg({
-    "request_count": "sum",
-    "total_bytes": "sum",
-    "prev_count": "mean",
-}).dropna()
-
-ts = pdf_hourly["request_count"].astype("float64")
-exog = pdf_hourly[["total_bytes", "prev_count"]].astype("float64")
+# Data is already hourly — no resampling needed
+ts = pdf["request_count"].astype("float64")
+exog = pdf[["total_bytes", "prev_count"]].astype("float64")
 
 # Normalize exog to prevent numerical issues
 exog_mean = exog.mean()
 exog_std = exog.std().replace(0, 1)
 exog_norm = (exog - exog_mean) / exog_std
 
-print(f"   Raw time series: {len(pdf)} observations (5-min)")
-print(f"   Resampled to hourly: {len(ts)} observations")
+print(f"   Hourly time series: {len(ts)} observations")
 print(f"   Date range: {ts.index.min()} → {ts.index.max()}")
 
 # ==========================================================================
@@ -165,7 +157,7 @@ print("=" * 55)
 print(f"Best Order:              {best_order}")
 print(f"Best Seasonal Order:     {best_seasonal_order}")
 print(f"AIC:                     {best_aic:.2f}")
-print(f"Data Frequency:          Hourly (resampled from 5-min)")
+print(f"Data Frequency:          Hourly")
 print("-" * 55)
 print(f"MSE  (Mean Squared Error):   {mse:.2f}")
 print(f"RMSE (Root Mean Sq Error):   {rmse:.2f}")

@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.ml import PipelineModel
+import math
 
 spark = (SparkSession.builder
     .appName("TrafficInference")
@@ -11,9 +12,14 @@ print(f"Loading model from {model_path}...")
 model = PipelineModel.load(model_path)
 
 print("Generating 'live' data for inference...")
+# Model now expects prev_count, hour_sin, hour_cos
+pi = math.pi
 live_data = spark.createDataFrame([
-    (2000,), (5000,), (100,), (8000,)
-], ["prev_count"])
+    (2000, math.sin(2*pi*10/24), math.cos(2*pi*10/24)),
+    (5000, math.sin(2*pi*14/24), math.cos(2*pi*14/24)),
+    (100,  math.sin(2*pi*3/24),  math.cos(2*pi*3/24)),
+    (8000, math.sin(2*pi*18/24), math.cos(2*pi*18/24)),
+], ["prev_count", "hour_sin", "hour_cos"])
 
 print("Predicting future traffic...")
 predictions = model.transform(live_data)

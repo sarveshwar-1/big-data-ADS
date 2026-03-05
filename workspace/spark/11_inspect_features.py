@@ -8,7 +8,7 @@ spark = (SparkSession.builder
 )
 
 # 1. READ: Load the feature data from HDFS
-input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready"
+input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready_hourly"
 print(f"Reading data from: {input_path}")
 df = spark.read.parquet(input_path)
 
@@ -22,7 +22,7 @@ df.printSchema()
 print("\n" + "="*40)
 print("      SAMPLE DATA (First 20 Rows)      ")
 print("="*40)
-df.orderBy("window_start").show(20, truncate=False)
+df.orderBy("hour_timestamp").show(20, truncate=False)
 
 # 4. STATS: Show summary statistics (Count, Mean, Min, Max)
 # This helps you spot outliers (e.g., if Min request_count is 0)

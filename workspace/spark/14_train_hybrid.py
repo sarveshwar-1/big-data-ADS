@@ -1,13 +1,12 @@
 """
 Hybrid SARIMA-LSTM Model — Sequential Residual Architecture
 ============================================================
-1. Load feature data from HDFS (same source as other models).
-2. Resample 5-min data → hourly (matches SARIMA pipeline).
-3. Fit SARIMA (with exogenous variables) on training set.
-4. Extract in-sample residuals, scale & clip them.
-5. Train LSTM to autoregressively forecast scaled residuals.
-6. Final forecast = SARIMA_forecast + LSTM_residual_correction.
-7. Evaluate, compare with SARIMA-only baseline, and save metrics to HDFS.
+1. Load hourly feature data from HDFS (same source as other models).
+2. Fit SARIMA (with exogenous variables) on training set.
+3. Extract in-sample residuals, scale & clip them.
+4. Train LSTM on training residuals only (no leakage).
+5. Final forecast = SARIMA_forecast + LSTM_residual_correction.
+6. Evaluate, compare with SARIMA-only baseline, and save metrics to HDFS.
 """
 
 import numpy as np
@@ -39,40 +38,33 @@ spark = (SparkSession.builder
 )
 
 # ==========================================================================
-# 1. DATA LOADING & PREPROCESSING  (identical to 13_train_sarima.py)
+# 1. DATA LOADING & PREPROCESSING
 # ==========================================================================
-print("\n[1/8] Loading Feature Data from HDFS...")
-input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready"
+print("\n[1/8] Loading Hourly Feature Data from HDFS...")
+input_path = "hdfs://namenode:8020/logs/features/traffic_ml_ready_hourly"
 df = spark.read.parquet(input_path)
 
-pdf = (df.select("window_start", "request_count", "total_bytes", "prev_count")
-       .orderBy("window_start")
+pdf = (df.select("hour_timestamp", "request_count", "total_bytes", "prev_count")
+       .orderBy("hour_timestamp")
        .toPandas())
 
-pdf["window_start"] = pd.to_datetime(pdf["window_start"])
-pdf = pdf.set_index("window_start").sort_index()
+pdf["hour_timestamp"] = pd.to_datetime(pdf["hour_timestamp"])
+pdf = pdf.set_index("hour_timestamp").sort_index()
 
-# Resample 5-min → hourly  (SARIMA is far more stable on hourly data)
-pdf_hourly = pdf.resample("1h").agg({
-    "request_count": "sum",
-    "total_bytes": "sum",
-    "prev_count": "mean",
-}).dropna()
-
-ts = pdf_hourly["request_count"].astype("float64")
-exog = pdf_hourly[["total_bytes", "prev_count"]].astype("float64")
+# Data is already hourly — no resampling needed
+ts = pdf["request_count"].astype("float64")
+exog = pdf[["total_bytes", "prev_count"]].astype("float64")
 
 # Normalise exogenous variables
 exog_mean = exog.mean()
 exog_std = exog.std().replace(0, 1)
 exog_norm = (exog - exog_mean) / exog_std
 
-print(f"   Raw  : {len(pdf)} observations (5-min)")
 print(f"   Hourly: {len(ts)} observations")
 print(f"   Range : {ts.index.min()} → {ts.index.max()}")
 
 # ==========================================================================
-# 2. TRAIN / TEST SPLIT (80 / 20)
+# 2. TRAIN / TEST SPLIT (80 / 20) — chronological, no leakage
 # ==========================================================================
 print("\n[2/8] Train / Test split (80-20)...")
 SEASONAL_PERIOD = 24          # daily cycle in hourly data
@@ -356,7 +348,7 @@ print(f"SARIMA Order:          {best_order}")
 print(f"SARIMA Seasonal Order: {best_seasonal}")
 print(f"SARIMA AIC:            {best_aic:.2f}")
 print(f"LSTM Lookback:         {LOOKBACK} hours")
-print(f"Data Frequency:        Hourly (resampled from 5-min)")
+print(f"Data Frequency:        Hourly")
 print("-" * 60)
 print(f"MSE  (Mean Squared Error):   {mse:.2f}")
 print(f"RMSE (Root Mean Sq Error):   {rmse:.2f}")
